@@ -23,7 +23,7 @@ __all__ = ["PydanticToTypeScriptConverter", "hello"]
 
 
 class PydanticToTypeScriptConverter:
-    def __init__(self, no_enum: bool = False):
+    def __init__(self, no_enum: bool = False, no_null: bool = False):
         self.type_mapping = {
             str: "string",
             int: "number",
@@ -52,6 +52,9 @@ class PydanticToTypeScriptConverter:
         # Configuration for enum handling
         self.no_enum = no_enum
 
+        # Configuration for null handling
+        self.no_null = no_null
+
     def python_type_to_typescript(self, python_type: Any, current_file: Path = None) -> str:
         """Convert a Python type to its TypeScript equivalent."""
         if python_type in self.type_mapping:
@@ -77,7 +80,10 @@ class PydanticToTypeScriptConverter:
         if origin is Union or origin is types.UnionType:
             if len(args) == 2 and type(None) in args:
                 non_null_type = args[0] if args[1] is type(None) else args[1]
-                return f"{self.python_type_to_typescript(non_null_type, current_file)} | null"
+                ts_type = self.python_type_to_typescript(non_null_type, current_file)
+                if self.no_null:
+                    return ts_type
+                return f"{ts_type} | null"
             return " | ".join(self.python_type_to_typescript(arg, current_file) for arg in args)
 
         # Handle string-based type annotations (e.g., "EmailStr")

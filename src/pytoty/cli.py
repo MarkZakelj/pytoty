@@ -15,6 +15,7 @@ def convert(
     output_dir: Path = typer.Argument(..., help="Directory to output TypeScript interface files"),
     pattern: str = typer.Option("**/*.py", help="File pattern to match Python files"),
     no_enum: bool = typer.Option(False, "--no-enum", help="Convert enums to Union types instead of TypeScript enums"),
+    no_null: bool = typer.Option(False, "--no-null", help="Don't generate | null for optional fields"),
 ) -> None:
     """Convert Pydantic models from input directory to TypeScript interfaces in output directory."""
 
@@ -28,7 +29,7 @@ def convert(
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    converter = PydanticToTypeScriptConverter(no_enum=no_enum)
+    converter = PydanticToTypeScriptConverter(no_enum=no_enum, no_null=no_null)
     python_files = list(input_dir.glob(pattern))
 
     if not python_files:
