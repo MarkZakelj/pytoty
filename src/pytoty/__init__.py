@@ -293,6 +293,6 @@ class PydanticToTypeScriptConverter:
 
         for module_name, imported_names in imports_by_module.items():
             imported_names_str = ", ".join(imported_names)
-            import_statements.append(f"import {{ {imported_names_str} }} from './{module_name}';")
+            import_statements.append(f"import type {{ {imported_names_str} }} from './{module_name}.type';")
 
         return "\n".join(import_statements) + "\n\n" if import_statements else ""
