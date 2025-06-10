@@ -297,8 +297,9 @@ class PydanticToTypeScriptConverter:
                     imports_by_module[module_name] = []
                 imports_by_module[module_name].append(model_name)
 
-        for module_name, imported_names in imports_by_module.items():
-            imported_names_str = ", ".join(imported_names)
+        for module_name in sorted(imports_by_module.keys()):
+            imported_names = imports_by_module[module_name]
+            imported_names_str = ", ".join(sorted(imported_names))
             import_statements.append(f"import type {{ {imported_names_str} }} from './{module_name}.type';")
 
         return "\n".join(import_statements) + "\n\n" if import_statements else ""
