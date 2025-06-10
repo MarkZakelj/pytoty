@@ -14,6 +14,7 @@ def convert(
     input_dir: Path = typer.Argument(..., help="Directory containing Python files with Pydantic models"),
     output_dir: Path = typer.Argument(..., help="Directory to output TypeScript interface files"),
     pattern: str = typer.Option("**/*.py", help="File pattern to match Python files"),
+    no_enum: bool = typer.Option(False, "--no-enum", help="Convert enums to Union types instead of TypeScript enums"),
 ) -> None:
     """Convert Pydantic models from input directory to TypeScript interfaces in output directory."""
 
@@ -27,7 +28,7 @@ def convert(
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    converter = PydanticToTypeScriptConverter()
+    converter = PydanticToTypeScriptConverter(no_enum=no_enum)
     python_files = list(input_dir.glob(pattern))
 
     if not python_files:
@@ -50,12 +51,7 @@ def convert(
         # Generate TypeScript content
         ts_content_parts = []
 
-        # Add imports
-        imports = converter.generate_typescript_imports(py_file)
-        if imports:
-            ts_content_parts.append(imports.rstrip())
-
-        # Add enums
+        # Add enums first
         file_key = str(py_file)
         enums = converter.file_enums.get(file_key, [])
         if enums:
@@ -65,17 +61,22 @@ def convert(
                 ts_enums.append(enum_ts)
             ts_content_parts.append("\n\n".join(ts_enums))
 
-        # Add interfaces
+        # Add interfaces (this will track import usage)
         ts_interfaces = []
         for model in models:
-            interface = converter.convert_pydantic_model_to_typescript(model)
+            interface = converter.convert_pydantic_model_to_typescript(model, py_file)
             ts_interfaces.append(interface)
         if ts_interfaces:
             ts_content_parts.append("\n\n".join(ts_interfaces))
 
+        # Add imports after processing models (so we know what's used)
+        imports = converter.generate_typescript_imports(py_file)
+        if imports:
+            ts_content_parts.insert(0, imports.rstrip())
+
         # Create output file
         relative_path = py_file.relative_to(input_dir)
-        ts_file = output_dir / relative_path.with_suffix(".ts")
+        ts_file = output_dir / relative_path.with_suffix(".type.ts")
         ts_file.parent.mkdir(parents=True, exist_ok=True)
 
         # Combine all parts
@@ -91,7 +92,7 @@ def convert(
         else:
             typer.echo(f"  Generated {interface_count} interfaces -> {ts_file.relative_to(output_dir)}")
 
-    typer.echo(f"\nConversion complete! Generated {total_models} TypeScript interfaces in {output_dir}")
+    typer.echo(f"\nConversion complete well! Generated {total_models} TypeScript interfaces in {output_dir}")
 
 
 if __name__ == "__main__":
