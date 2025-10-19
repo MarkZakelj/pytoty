@@ -6,6 +6,7 @@ from datetime import date, datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Set, Type, Union, get_args, get_origin
+from uuid import UUID
 
 from pydantic import BaseModel
 from pydantic.fields import PydanticUndefined
@@ -35,6 +36,8 @@ class PydanticToTypeScriptConverter:
             type(None): "null",
             datetime: "string",
             date: "string",
+            UUID: "string",
+            Any: "any",
         }
 
         # Add EmailStr if available
