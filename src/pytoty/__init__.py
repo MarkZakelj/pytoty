@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Set, Type, Union, get_args, get_origin
 
 from pydantic import BaseModel
+from pydantic.fields import PydanticUndefined
 
 try:
     from pydantic import EmailStr
@@ -269,8 +270,9 @@ class PydanticToTypeScriptConverter:
             field_type = field_info.annotation if field_info.annotation else Any
             ts_type = self.python_type_to_typescript(field_type, current_file)
 
-            is_optional = not field_info.is_required()
-            optional_marker = "?" if is_optional else ""
+            # Field is optional (?) if it has a default value or default_factory
+            has_default = field_info.default is not PydanticUndefined or field_info.default_factory is not None
+            optional_marker = "?" if has_default else ""
 
             fields.append(f"  {field_name}{optional_marker}: {ts_type};")
 
