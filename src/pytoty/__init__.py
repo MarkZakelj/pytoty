@@ -5,7 +5,7 @@ import types
 from datetime import date, datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Set, Type, Union, get_args, get_origin
+from typing import Any, Dict, List, Literal, Set, Type, Union, get_args, get_origin
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -46,6 +46,9 @@ class PydanticToTypeScriptConverter:
 
         # Track enums for TypeScript generation
         self.file_enums: Dict[str, List[Type[Enum]]] = {}
+
+        # Track Literal type aliases for TypeScript generation
+        self.file_literals: Dict[str, Dict[str, Any]] = {}
 
         # Track available Pydantic imports per file
         self.file_pydantic_imports: Dict[str, Dict[str, str]] = {}
@@ -90,10 +93,45 @@ class PydanticToTypeScriptConverter:
                 return f"{ts_type} | null"
             return " | ".join(self.python_type_to_typescript(arg, current_file) for arg in args)
 
+        # Handle Literal types
+        if origin is Literal:
+            if args:
+                # Check if this Literal matches a defined type alias
+                if current_file:
+                    file_key = str(current_file)
+                    literal_aliases = self.file_literals.get(file_key, {})
+                    # Convert args to a comparable format
+                    literal_values_set = set(args)
+                    for alias_name, alias_values in literal_aliases.items():
+                        if set(alias_values) == literal_values_set:
+                            # This Literal matches a type alias, use the alias name
+                            return alias_name
+
+                # No matching alias found, generate inline union
+                literal_values = []
+                for arg in args:
+                    if isinstance(arg, str):
+                        literal_values.append(f'"{arg}"')
+                    elif isinstance(arg, bool):
+                        literal_values.append("true" if arg else "false")
+                    elif isinstance(arg, (int, float)):
+                        literal_values.append(str(arg))
+                    else:
+                        literal_values.append(f'"{arg}"')
+                return " | ".join(literal_values)
+            return "never"
+
         # Handle string-based type annotations (e.g., "EmailStr")
         if isinstance(python_type, str):
             if python_type == "EmailStr":
                 return "string"
+            # Check if this is a Literal type alias
+            if current_file:
+                file_key = str(current_file)
+                literal_aliases = self.file_literals.get(file_key, {})
+                if python_type in literal_aliases:
+                    # This is a reference to a Literal type alias, use the alias name
+                    return python_type
             # Check if this is a Pydantic model reference from imports
             if current_file:
                 file_key = str(current_file)
@@ -178,6 +216,9 @@ class PydanticToTypeScriptConverter:
         # Also extract and store enums for this file
         self.file_enums[file_key] = self.extract_enums_from_file(file_path)
 
+        # Also extract and store Literal type aliases for this file
+        self.file_literals[file_key] = self.extract_literal_type_aliases(file_path)
+
         # Get the models defined in this specific file using AST
         defined_classes = self._get_defined_classes(file_path)
 
@@ -213,6 +254,62 @@ class PydanticToTypeScriptConverter:
 
         return defined_classes
 
+    def extract_literal_type_aliases(self, file_path: Path) -> Dict[str, Any]:
+        """Extract Literal type aliases from a Python file using AST."""
+        literal_aliases = {}
+
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+                tree = ast.parse(content)
+
+            for node in tree.body:
+                if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                    # This handles: ElementStatus: TypeAlias = Literal["warehouse", "unit", "end-of-life"]
+                    # or: ElementStatus = Literal["warehouse", "unit", "end-of-life"]
+                    alias_name = node.target.id
+
+                    # Check if the value is a Literal type
+                    if isinstance(node.value, ast.Subscript):
+                        if isinstance(node.value.value, ast.Name) and node.value.value.id == "Literal":
+                            # Extract the literal values
+                            literal_values = []
+                            if isinstance(node.value.slice, ast.Tuple):
+                                for elt in node.value.slice.elts:
+                                    if isinstance(elt, ast.Constant):
+                                        literal_values.append(elt.value)
+                            elif isinstance(node.value.slice, ast.Constant):
+                                literal_values.append(node.value.slice.value)
+
+                            if literal_values:
+                                literal_aliases[alias_name] = literal_values
+
+                elif isinstance(node, ast.Assign):
+                    # This handles simple assignment: ElementStatus = Literal["warehouse", "unit", "end-of-life"]
+                    for target in node.targets:
+                        if isinstance(target, ast.Name):
+                            alias_name = target.id
+
+                            # Check if the value is a Literal type
+                            if isinstance(node.value, ast.Subscript):
+                                if isinstance(node.value.value, ast.Name) and node.value.value.id == "Literal":
+                                    # Extract the literal values
+                                    literal_values = []
+                                    if isinstance(node.value.slice, ast.Tuple):
+                                        for elt in node.value.slice.elts:
+                                            if isinstance(elt, ast.Constant):
+                                                literal_values.append(elt.value)
+                                    elif isinstance(node.value.slice, ast.Constant):
+                                        literal_values.append(node.value.slice.value)
+
+                                    if literal_values:
+                                        literal_aliases[alias_name] = literal_values
+
+        except Exception as e:
+            print(f"Error extracting Literal type aliases from {file_path}: {e}")
+
+        return literal_aliases
+
     def extract_enums_from_file(self, file_path: Path) -> List[Type[Enum]]:
         """Extract Enum classes from a Python file."""
         enums = []
@@ -235,6 +332,22 @@ class PydanticToTypeScriptConverter:
             print(f"Error processing enums from {file_path}: {e}")
 
         return enums
+
+    def convert_literal_to_typescript(self, alias_name: str, literal_values: List[Any]) -> str:
+        """Convert a Literal type alias to a TypeScript type."""
+        ts_values = []
+        for value in literal_values:
+            if isinstance(value, str):
+                ts_values.append(f'"{value}"')
+            elif isinstance(value, bool):
+                ts_values.append("true" if value else "false")
+            elif isinstance(value, (int, float)):
+                ts_values.append(str(value))
+            else:
+                ts_values.append(f'"{value}"')
+
+        union_type = " | ".join(ts_values)
+        return f"export type {alias_name} = {union_type};"
 
     def convert_enum_to_typescript(self, enum_class: Type[Enum], no_enum: bool = False) -> str:
         """Convert a Python Enum to a TypeScript enum or union type."""

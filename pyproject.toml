@@ -1,7 +1,7 @@
 [project]
 name = "pytoty"
-version = "0.3.0"
-description = "Add your description here"
+version = "0.4.0"
+description = "Transform pydantic type schemas to typescript"
 readme = "README.md"
 authors = [
     { name = "Mark Zakelj", email = "m.zakelj@sportradar.com" }

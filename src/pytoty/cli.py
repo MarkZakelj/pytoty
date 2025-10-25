@@ -52,8 +52,17 @@ def convert(
         # Generate TypeScript content
         ts_content_parts = []
 
-        # Add enums first
+        # Add Literal type aliases first
         file_key = str(py_file)
+        literals = converter.file_literals.get(file_key, {})
+        if literals:
+            ts_literals = []
+            for alias_name, literal_values in literals.items():
+                literal_ts = converter.convert_literal_to_typescript(alias_name, literal_values)
+                ts_literals.append(literal_ts)
+            ts_content_parts.append("\n\n".join(ts_literals))
+
+        # Add enums
         enums = converter.file_enums.get(file_key, [])
         if enums:
             ts_enums = []
@@ -84,14 +93,18 @@ def convert(
         ts_content = "\n\n".join(ts_content_parts)
         ts_file.write_text(ts_content)
 
+        literal_count = len(literals)
         enum_count = len(enums)
         interface_count = len(models)
+
+        type_parts = []
+        if literal_count > 0:
+            type_parts.append(f"{literal_count} literal types")
         if enum_count > 0:
-            typer.echo(
-                f"  Generated {enum_count} enums + {interface_count} interfaces -> {ts_file.relative_to(output_dir)}"
-            )
-        else:
-            typer.echo(f"  Generated {interface_count} interfaces -> {ts_file.relative_to(output_dir)}")
+            type_parts.append(f"{enum_count} enums")
+        type_parts.append(f"{interface_count} interfaces")
+
+        typer.echo(f"  Generated {' + '.join(type_parts)} -> {ts_file.relative_to(output_dir)}")
 
     typer.echo(f"\nConversion complete well! Generated {total_models} TypeScript interfaces in {output_dir}")
 
